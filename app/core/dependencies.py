@@ -12,9 +12,12 @@ def get_current_user(
 ) -> dict:
     try:
         payload = decode_token(credentials.credentials)
+        if not payload.get("sub"):
+            raise ValueError("Missing subject")
         return payload
-    except JWTError:
+    except (JWTError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
         )

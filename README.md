@@ -56,20 +56,30 @@ quizai-BE/
 │   ├── db/
 │   │   └── supabase.py          # Supabase 클라이언트
 │   ├── models/                  # Pydantic 모델
+│   │   ├── user.py
+│   │   ├── lecture.py
+│   │   ├── quiz.py
+│   │   ├── session.py
+│   │   └── dashboard.py
 │   ├── routers/                 # API 라우터
 │   │   ├── auth.py              # 인증
 │   │   ├── lectures.py          # 강의록 업로드
 │   │   ├── quizzes.py           # 퀴즈 생성
-│   │   ├── sessions.py          # 세션 관리
+│   │   ├── sessions.py          # 세션 관리 + 결과 조회
 │   │   ├── websocket.py         # 실시간 WebSocket
 │   │   └── dashboard.py         # 대시보드
 │   ├── services/
-│   │   ├── claude_service.py    # Claude API 연동
+│   │   ├── claude_service.py    # Claude API 퀴즈 생성
+│   │   ├── lecture_service.py   # 파일 텍스트 추출
 │   │   ├── session_service.py   # 세션 비즈니스 로직
 │   │   └── analysis_service.py  # 이해도 분류, 강사 평가
 │   └── websocket/
 │       └── manager.py           # ConnectionManager
+├── schema/
+│   └── sessions_answers.sql     # sessions, answers 테이블 DDL
 ├── .env.example
+├── render.yaml                  # Render 배포 설정
+├── runtime.txt                  # Python 버전 명시
 ├── requirements.txt
 └── CLAUDE.md
 ```
@@ -151,11 +161,12 @@ http://localhost:8000/docs
 ```sql
 users        -- 사용자 (강사/수강생/운영자)
 lectures     -- 강의록
-quizzes      -- 생성된 퀴즈
-quiz_sets    -- 퀴즈 세트
+quizzes      -- 퀴즈 세트 + 문제 목록 (questions JSONB)
 sessions     -- 퀴즈 세션
 answers      -- 수강생 답변
 ```
+
+> `schema/sessions_answers.sql` 에 sessions, answers 테이블 DDL이 있습니다.
 
 ---
 

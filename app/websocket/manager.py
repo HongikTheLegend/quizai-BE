@@ -3,26 +3,50 @@ from fastapi import WebSocket
 
 class ConnectionManager:
     def __init__(self):
-        # session_id -> list of connected WebSockets
-        self.active_connections: dict[str, list[WebSocket]] = {}
+        # {session_id: {user_id: {"ws": WebSocket, "role": str, "nickname": str}}}
+        self.connections: dict[str, dict[str, dict]] = {}
 
-    async def connect(self, session_id: str, websocket: WebSocket):
+    async def connect(
+        self,
+        session_id: str,
+        user_id: str,
+        role: str,
+        nickname: str,
+        websocket: WebSocket,
+    ):
         await websocket.accept()
-        self.active_connections.setdefault(session_id, []).append(websocket)
+        if session_id not in self.connections:
+            self.connections[session_id] = {}
+        self.connections[session_id][user_id] = {
+            "ws": websocket,
+            "role": role,
+            "nickname": nickname,
+        }
 
-    def disconnect(self, session_id: str, websocket: WebSocket):
-        connections = self.active_connections.get(session_id, [])
-        if websocket in connections:
-            connections.remove(websocket)
+    def disconnect(self, session_id: str, user_id: str):
+        session = self.connections.get(session_id, {})
+        session.pop(user_id, None)
+        if not session:
+            self.connections.pop(session_id, None)
 
-    async def send_to_session(self, session_id: str, message: dict):
-        for ws in self.active_connections.get(session_id, []):
-            await ws.send_json(message)
+    def get_participant_count(self, session_id: str) -> int:
+        return len(self.connections.get(session_id, {}))
 
-    async def broadcast(self, message: dict):
-        for connections in self.active_connections.values():
-            for ws in connections:
-                await ws.send_json(message)
+    def get_student_count(self, session_id: str) -> int:
+        return sum(
+            1
+            for info in self.connections.get(session_id, {}).values()
+            if info["role"] == "student"
+        )
+
+    async def broadcast(self, session_id: str, message: dict):
+        for info in self.connections.get(session_id, {}).values():
+            await info["ws"].send_json(message)
+
+    async def send_to_instructors(self, session_id: str, message: dict):
+        for info in self.connections.get(session_id, {}).values():
+            if info["role"] == "instructor":
+                await info["ws"].send_json(message)
 
 
 manager = ConnectionManager()

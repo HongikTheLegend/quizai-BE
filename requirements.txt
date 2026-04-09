@@ -14,8 +14,9 @@ anthropic==0.34.2
 # Auth
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 
 # File handling
 python-multipart==0.0.9
-pypdf==4.3.1
+pypdf==6.9.2
 python-docx==1.1.2

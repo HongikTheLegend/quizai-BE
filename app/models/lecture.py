@@ -1,19 +1,16 @@
 from pydantic import BaseModel
 
 
-class LectureBase(BaseModel):
+class LectureUploadResponse(BaseModel):
+    lecture_id: str
     title: str
-
-
-class LectureCreate(LectureBase):
-    pass
-
-
-class LectureResponse(LectureBase):
-    id: str
-    instructor_id: str
-    content: str | None = None
+    text_length: int
     created_at: str
 
-    class Config:
-        from_attributes = True
+
+class LectureResponse(BaseModel):
+    id: str
+    title: str
+    instructor_id: str
+    text_length: int
+    created_at: str

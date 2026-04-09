@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.dependencies import get_current_user
+from app.db.supabase import get_supabase
+from app.models.dashboard import SessionResultResponse, StudentGrade
 from app.models.session import AnswerResponse, AnswerSubmit, SessionStart, SessionStartResponse
+from app.services.analysis_service import classify_students
 from app.services.session_service import create_session, get_answer_stats, submit_answer
 from app.websocket.manager import manager
 
@@ -52,3 +55,23 @@ async def answer(
     })
 
     return AnswerResponse(**result)
+
+
+@router.get("/{session_id}/result", response_model=SessionResultResponse)
+def session_result(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    row = get_supabase().table("sessions").select("instructor_id").eq("id", session_id).single().execute()
+    if not row.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="세션을 찾을 수 없습니다")
+    if current_user.get("role") not in ("admin",) and row.data["instructor_id"] != current_user["sub"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="권한이 없습니다")
+
+    result = classify_students(session_id)
+    return SessionResultResponse(
+        session_id=session_id,
+        grade_distribution=result["grade_distribution"],
+        weak_concepts=result["weak_concepts"],
+        students=[StudentGrade(**s) for s in result["students"]],
+    )

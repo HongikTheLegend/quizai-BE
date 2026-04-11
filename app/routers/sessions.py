@@ -11,6 +11,16 @@ from app.websocket.manager import manager
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
+def _build_ws_url(request: Request, path: str) -> str:
+    """Render 등 리버스 프록시 환경에서 X-Forwarded-Proto를 존중해 wss:// URL 생성."""
+    proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    if not proto:
+        proto = request.url.scheme
+    ws_scheme = "wss" if proto == "https" else "ws"
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{ws_scheme}://{host}{path}"
+
+
 @router.post("/start", response_model=SessionStartResponse)
 def start_session(
     body: SessionStart,
@@ -18,10 +28,7 @@ def start_session(
     current_user: dict = Depends(get_current_user),
 ):
     session = create_session(body.quiz_set_id, current_user["sub"], body.time_limit)
-
-    base = str(request.base_url).rstrip("/")
-    ws_base = base.replace("http://", "ws://").replace("https://", "wss://")
-    ws_url = f"{ws_base}/sessions/{session['id']}/join"
+    ws_url = _build_ws_url(request, f"/sessions/{session['id']}/join")
 
     return SessionStartResponse(
         session_id=session["id"],
@@ -45,12 +52,9 @@ def join_session(body: SessionJoin, request: Request):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
     session_id = row.data["id"]
-    base = str(request.base_url).rstrip("/")
-    ws_base = base.replace("http://", "ws://").replace("https://", "wss://")
-
     return SessionJoinResponse(
         session_id=session_id,
-        ws_url=f"{ws_base}/sessions/{session_id}/join",
+        ws_url=_build_ws_url(request, f"/sessions/{session_id}/join"),
     )
 
 

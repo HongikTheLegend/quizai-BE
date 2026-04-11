@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from jose import JWTError
 
@@ -6,6 +8,7 @@ from app.db.supabase import get_supabase
 from app.services.session_service import get_answer_stats, submit_answer
 from app.websocket.manager import manager
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["websocket"])
 
 
@@ -45,11 +48,14 @@ async def session_ws(
     nickname: str = "",
     token: str = "",
 ):
+    logger.info("[WS] 연결 시도 | session_id=%s nickname=%s", session_id, nickname)
+
     # JWT 검증
     try:
         payload = decode_token(token)
         user_id: str = payload["sub"]
     except (JWTError, KeyError):
+        logger.warning("[WS] 인증 실패 | session_id=%s", session_id)
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
@@ -63,6 +69,7 @@ async def session_ws(
         .execute()
     )
     if not session_row.data:
+        logger.warning("[WS] 세션 없음 | session_id=%s", session_id)
         await websocket.accept()
         await websocket.send_json({"detail": "Session not found"})
         await websocket.close(code=4004)
@@ -72,6 +79,7 @@ async def session_ws(
     role = "instructor" if session_data["instructor_id"] == user_id else "student"
 
     await manager.connect(session_id, user_id, role, nickname, websocket)
+    logger.info("[WS] 연결 성공 | session_id=%s user_id=%s role=%s", session_id, user_id, role)
 
     await manager.broadcast(session_id, {
         "type": "session_joined",
@@ -132,6 +140,7 @@ async def session_ws(
 
     except WebSocketDisconnect:
         manager.disconnect(session_id, user_id)
+        logger.info("[WS] 연결 종료 | session_id=%s user_id=%s role=%s", session_id, user_id, role)
         await manager.broadcast(session_id, {
             "type": "session_left",
             "user_id": user_id,

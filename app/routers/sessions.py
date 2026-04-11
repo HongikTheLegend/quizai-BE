@@ -85,10 +85,31 @@ def session_result(
     session_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    row = get_supabase().table("sessions").select("instructor_id").eq("id", session_id).single().execute()
+    supabase = get_supabase()
+    row = supabase.table("sessions").select("instructor_id").eq("id", session_id).single().execute()
     if not row.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="세션을 찾을 수 없습니다")
-    if current_user.get("role") not in ("admin",) and row.data["instructor_id"] != current_user["sub"]:
+
+    role = current_user.get("role")
+    user_id = current_user["sub"]
+
+    if role == "admin":
+        pass  # 전체 허용
+    elif role == "instructor":
+        if row.data["instructor_id"] != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="권한이 없습니다")
+    elif role == "student":
+        participated = (
+            supabase.table("answers")
+            .select("id")
+            .eq("session_id", session_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if not participated.data:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="참여하지 않은 세션입니다")
+    else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="권한이 없습니다")
 
     result = classify_students(session_id)

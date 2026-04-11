@@ -9,6 +9,35 @@ from app.websocket.manager import manager
 router = APIRouter(tags=["websocket"])
 
 
+async def _fetch_question(supabase, quiz_set_id: str, quiz_id: str, time_limit: int) -> dict | None:
+    """quiz_set_id의 questions 배열에서 quiz_id와 일치하는 문제를 조회해 브로드캐스트용 payload로 반환."""
+    row = (
+        supabase.table("quizzes")
+        .select("questions")
+        .eq("id", quiz_set_id)
+        .single()
+        .execute()
+    )
+    if not row.data:
+        return None
+
+    question = next(
+        (q for q in (row.data.get("questions") or []) if q["id"] == quiz_id),
+        None,
+    )
+    if not question:
+        return None
+
+    options = [f"{opt['label']}. {opt['text']}" for opt in question.get("options", [])]
+
+    return {
+        "quiz_id": quiz_id,
+        "question": question["question"],
+        "options": options,
+        "time_limit": time_limit,
+    }
+
+
 @router.websocket("/sessions/{session_id}/join")
 async def session_ws(
     session_id: str,
@@ -28,7 +57,7 @@ async def session_ws(
     supabase = get_supabase()
     session_row = (
         supabase.table("sessions")
-        .select("instructor_id")
+        .select("instructor_id, quiz_set_id, time_limit")
         .eq("id", session_id)
         .single()
         .execute()
@@ -39,7 +68,8 @@ async def session_ws(
         await websocket.close(code=4004)
         return
 
-    role = "instructor" if session_row.data["instructor_id"] == user_id else "student"
+    session_data = session_row.data
+    role = "instructor" if session_data["instructor_id"] == user_id else "student"
 
     await manager.connect(session_id, user_id, role, nickname, websocket)
 
@@ -58,10 +88,17 @@ async def session_ws(
 
             if role == "instructor":
                 if msg_type == "quiz_start":
-                    await manager.broadcast(session_id, {
-                        "type": "quiz_started",
-                        "quiz_id": data.get("quiz_id"),
-                    })
+                    quiz_id = data.get("quiz_id", "")
+                    question_payload = await _fetch_question(
+                        supabase, session_data["quiz_set_id"], quiz_id, session_data["time_limit"]
+                    )
+                    if question_payload is None:
+                        await websocket.send_json({"type": "error", "detail": f"Question not found: {quiz_id}"})
+                    else:
+                        await manager.broadcast(session_id, {
+                            "type": "quiz_started",
+                            "payload": question_payload,
+                        })
                 elif msg_type == "reveal_answer":
                     await manager.broadcast(session_id, {
                         "type": "answer_revealed",

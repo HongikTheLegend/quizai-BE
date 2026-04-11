@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.core.dependencies import get_current_user
 from app.db.supabase import get_supabase
 from app.models.dashboard import SessionResultResponse, StudentGrade
-from app.models.session import AnswerResponse, AnswerSubmit, SessionStart, SessionStartResponse
+from app.models.session import AnswerResponse, AnswerSubmit, SessionJoin, SessionJoinResponse, SessionStart, SessionStartResponse
 from app.services.analysis_service import classify_students
 from app.services.session_service import create_session, get_answer_stats, submit_answer
 from app.websocket.manager import manager
@@ -28,6 +28,29 @@ def start_session(
         session_code=session["session_code"],
         ws_url=ws_url,
         status=session["status"],
+    )
+
+
+@router.post("/join", response_model=SessionJoinResponse)
+def join_session(body: SessionJoin, request: Request):
+    row = (
+        get_supabase()
+        .table("sessions")
+        .select("id")
+        .eq("session_code", body.session_code.upper())
+        .single()
+        .execute()
+    )
+    if not row.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    session_id = row.data["id"]
+    base = str(request.base_url).rstrip("/")
+    ws_base = base.replace("http://", "ws://").replace("https://", "wss://")
+
+    return SessionJoinResponse(
+        session_id=session_id,
+        ws_url=f"{ws_base}/sessions/{session_id}/join",
     )
 
 

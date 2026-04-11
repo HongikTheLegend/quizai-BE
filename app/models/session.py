@@ -23,3 +23,13 @@ class AnswerResponse(BaseModel):
     is_correct: bool
     correct_option: str
     explanation: str | None = None
+
+
+class SessionJoin(BaseModel):
+    session_code: str
+    nickname: str
+
+
+class SessionJoinResponse(BaseModel):
+    session_id: str
+    ws_url: str

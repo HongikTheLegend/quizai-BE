@@ -11,6 +11,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://quizai.vercel.app",
+        "https://quizai-fe.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

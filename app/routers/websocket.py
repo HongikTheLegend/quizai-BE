@@ -34,7 +34,9 @@ async def session_ws(
         .execute()
     )
     if not session_row.data:
-        await websocket.close(code=4004, reason="Session not found")
+        await websocket.accept()
+        await websocket.send_json({"detail": "Session not found"})
+        await websocket.close(code=4004)
         return
 
     role = "instructor" if session_row.data["instructor_id"] == user_id else "student"

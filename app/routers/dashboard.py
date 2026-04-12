@@ -86,8 +86,9 @@ def instructor_dashboard(current_user: dict = Depends(get_current_user)):
                 1,
             ) if session_answers[s["id"]] else 0.0,
         )
-        for s in sessions[:5]
-    ]
+        for s in sessions
+        if s["status"] == "ended"
+    ][:5]
 
     return InstructorDashboard(
         total_sessions=len(sessions),

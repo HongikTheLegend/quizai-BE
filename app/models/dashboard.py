@@ -48,13 +48,16 @@ class AdminDashboard(BaseModel):
 
 
 class StudentGrade(BaseModel):
-    user_id: str
-    grade: str  # 우수 | 응용부족 | 개념미숙
-    reason: str
+    student_id: str
+    nickname: str
+    score: float   # 정답률 (0~100)
+    grade: str     # excellent | needs_practice | needs_review
 
 
 class SessionResultResponse(BaseModel):
     session_id: str
+    total_students: int
+    avg_score: float
     grade_distribution: dict[str, int]
     weak_concepts: list[str]
     students: list[StudentGrade]

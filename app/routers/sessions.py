@@ -119,6 +119,8 @@ def session_result(
     result = classify_students(session_id)
     return SessionResultResponse(
         session_id=session_id,
+        total_students=result["total_students"],
+        avg_score=result["avg_score"],
         grade_distribution=result["grade_distribution"],
         weak_concepts=result["weak_concepts"],
         students=[StudentGrade(**s) for s in result["students"]],

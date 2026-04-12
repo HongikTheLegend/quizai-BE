@@ -93,14 +93,14 @@ def _build_classify_prompt(student_data: list[dict], questions: list[dict]) -> s
     return (
         "다음 학생들의 퀴즈 답변 데이터를 분석해서 각 학생을 분류해줘.\n"
         "분류 기준:\n"
-        "- 우수: 정답률 70% 이상, 개념 이해가 확실함\n"
-        "- 응용부족: 정답률 50~70%, 기본 개념은 있으나 응용·심화에서 실수\n"
-        "- 개념미숙: 정답률 50% 미만, 기초 개념 자체가 부족함\n\n"
+        "- excellent: 정답률 70% 이상, 개념 이해가 확실함\n"
+        "- needs_practice: 정답률 50~70%, 기본 개념은 있으나 응용·심화에서 실수\n"
+        "- needs_review: 정답률 50% 미만, 기초 개념 자체가 부족함\n\n"
         f"학생 데이터:\n{json.dumps(enriched, ensure_ascii=False)}\n\n"
         "반드시 아래 JSON 형식으로만 응답해. 다른 텍스트 없이 JSON만:\n"
-        '{"students": [{"user_id": "...", "grade": "우수|응용부족|개념미숙", "reason": "한 문장 이유"}], '
+        '{"students": [{"user_id": "...", "grade": "excellent|needs_practice|needs_review", "reason": "한 문장 이유"}], '
         '"weak_concepts": ["오답이 많은 개념1", "개념2"], '
-        '"grade_distribution": {"우수": 0, "응용부족": 0, "개념미숙": 0}}'
+        '"grade_distribution": {"excellent": 0, "needs_practice": 0, "needs_review": 0}}'
     )
 
 
@@ -124,31 +124,70 @@ def _call_classify_api(student_data: list[dict], questions: list[dict]) -> dict:
 
 def classify_students(session_id: str) -> dict:
     """
-    세션 답변 데이터 → Claude 오답 패턴 분석 → 우수/응용부족/개념미숙 분류.
+    세션 답변 데이터 → Claude 오답 패턴 분석 → excellent/needs_practice/needs_review 분류.
 
     반환:
         {
-          "grade_distribution": {"우수": N, "응용부족": N, "개념미숙": N},
+          "total_students": N,
+          "avg_score": X,
+          "grade_distribution": {"excellent": N, "needs_practice": N, "needs_review": N},
           "weak_concepts": [...],
-          "students": [{"user_id": ..., "grade": ..., "reason": ...}]
+          "students": [{"student_id": ..., "nickname": ..., "score": ..., "grade": ...}]
         }
     """
     answers, questions = _fetch_session_data(session_id)
 
+    empty = {
+        "total_students": 0,
+        "avg_score": 0.0,
+        "grade_distribution": {"excellent": 0, "needs_practice": 0, "needs_review": 0},
+        "weak_concepts": [],
+        "students": [],
+    }
     if not answers:
-        return {
-            "grade_distribution": {"우수": 0, "응용부족": 0, "개념미숙": 0},
-            "weak_concepts": [],
-            "students": [],
-        }
+        return empty
 
     student_data = _aggregate_by_student(answers)
 
+    # users 테이블에서 nickname(name) 일괄 조회
+    supabase = get_supabase()
+    user_ids = [s["user_id"] for s in student_data]
+    users_row = supabase.table("users").select("id, name").in_("id", user_ids).execute()
+    nickname_map = {u["id"]: (u.get("name") or "") for u in (users_row.data or [])}
+
+    # score map: user_id → correct_rate
+    score_map = {s["user_id"]: s["correct_rate"] for s in student_data}
+
     try:
-        return _call_classify_api(student_data, questions)
+        claude_result = _call_classify_api(student_data, questions)
     except Exception as e:
         logger.warning("Claude 분류 실패, 재시도: %s", e)
-        return _call_classify_api(student_data, questions)
+        claude_result = _call_classify_api(student_data, questions)
+
+    # Claude grade + 로컬 score/nickname 합치기
+    students = [
+        {
+            "student_id": s["user_id"],
+            "nickname": nickname_map.get(s["user_id"], ""),
+            "score": score_map.get(s["user_id"], 0.0),
+            "grade": s["grade"],
+        }
+        for s in claude_result.get("students", [])
+    ]
+
+    total = len(students)
+    avg_score = round(sum(s["score"] for s in students) / total, 1) if total else 0.0
+
+    return {
+        "total_students": total,
+        "avg_score": avg_score,
+        "grade_distribution": claude_result.get(
+            "grade_distribution",
+            {"excellent": 0, "needs_practice": 0, "needs_review": 0},
+        ),
+        "weak_concepts": claude_result.get("weak_concepts", []),
+        "students": students,
+    }
 
 
 def calculate_instructor_score(instructor_id: str) -> float:

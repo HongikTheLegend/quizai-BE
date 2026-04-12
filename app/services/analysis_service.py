@@ -60,8 +60,11 @@ def _fetch_session_data(session_id: str) -> tuple[list[dict], list[dict]]:
     return answers, questions
 
 
+_OPTION_TO_INDEX = {"A": 0, "B": 1, "C": 2, "D": 3}
+
+
 def _aggregate_by_student(answers: list[dict]) -> list[dict]:
-    """user_id별로 답변을 집계해 정답률·오답 quiz_id 목록 반환."""
+    """user_id별로 답변을 집계해 정답률·오답 quiz_id 목록·answers 배열 반환."""
     student_map: dict[str, list[dict]] = defaultdict(list)
     for a in answers:
         student_map[a["user_id"]].append(a)
@@ -76,6 +79,17 @@ def _aggregate_by_student(answers: list[dict]) -> list[dict]:
             "correct": correct,
             "correct_rate": round(correct / total * 100, 1) if total else 0,
             "wrong_quiz_ids": [a["quiz_id"] for a in ans_list if not a["is_correct"]],
+            # 문자 selected_option("A"~"D") → 숫자(0~3)
+            "answers": [
+                {
+                    "quiz_id": a["quiz_id"],
+                    "selected_option": _OPTION_TO_INDEX.get(
+                        str(a.get("selected_option", "")).upper(), -1
+                    ),
+                    "is_correct": a["is_correct"],
+                }
+                for a in ans_list
+            ],
         })
     return result
 
@@ -161,6 +175,8 @@ def classify_students(session_id: str) -> dict:
 
     # score map: user_id → correct_rate
     score_map = {s["user_id"]: s["correct_rate"] for s in student_data}
+    # answers map: user_id → answers 배열
+    answers_map = {s["user_id"]: s["answers"] for s in student_data}
 
     try:
         claude_result = _call_classify_api(student_data, questions)
@@ -168,13 +184,14 @@ def classify_students(session_id: str) -> dict:
         logger.warning("Claude 분류 실패, 재시도: %s", e)
         claude_result = _call_classify_api(student_data, questions)
 
-    # Claude grade + 로컬 score/nickname 합치기
+    # Claude grade + 로컬 score/nickname/answers 합치기
     students = [
         {
             "student_id": s["user_id"],
             "nickname": nickname_map.get(s["user_id"], ""),
             "score": score_map.get(s["user_id"], 0.0),
             "grade": s["grade"],
+            "answers": answers_map.get(s["user_id"], []),
         }
         for s in claude_result.get("students", [])
     ]

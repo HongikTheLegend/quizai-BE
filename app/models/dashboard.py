@@ -47,11 +47,18 @@ class AdminDashboard(BaseModel):
     at_risk_students: list[AtRiskStudent]
 
 
+class StudentAnswer(BaseModel):
+    quiz_id: str
+    selected_option: int  # 0=A, 1=B, 2=C, 3=D
+    is_correct: bool
+
+
 class StudentGrade(BaseModel):
     student_id: str
     nickname: str
-    score: float   # 정답률 (0~100)
-    grade: str     # excellent | needs_practice | needs_review
+    score: float          # 정답률 (0~100)
+    grade: str            # excellent | needs_practice | needs_review
+    answers: list[StudentAnswer] = []
 
 
 class SessionResultResponse(BaseModel):

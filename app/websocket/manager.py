@@ -1,4 +1,8 @@
+import logging
+
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
@@ -22,6 +26,10 @@ class ConnectionManager:
             "role": role,
             "nickname": nickname,
         }
+        logger.info(
+            "[WS] connect | session_id=%s user_id=%s role=%s | 현재 연결 수=%d",
+            session_id, user_id, role, len(self.connections[session_id]),
+        )
 
     def disconnect(self, session_id: str, user_id: str):
         session = self.connections.get(session_id, {})
@@ -40,13 +48,34 @@ class ConnectionManager:
         )
 
     async def broadcast(self, session_id: str, message: dict):
-        for info in self.connections.get(session_id, {}).values():
-            await info["ws"].send_json(message)
+        # list()로 스냅샷 — 순회 중 disconnect로 dict가 변경되어도 안전
+        recipients = list(self.connections.get(session_id, {}).items())
+        sent = 0
+        for user_id, info in recipients:
+            try:
+                await info["ws"].send_json(message)
+                sent += 1
+            except Exception as e:
+                logger.warning(
+                    "[WS] broadcast 전송 실패 | session_id=%s user_id=%s error=%s",
+                    session_id, user_id, e,
+                )
+        logger.info(
+            "[WS] broadcast | session_id=%s | 수신자 수=%d / 전체=%d | type=%s",
+            session_id, sent, len(recipients), message.get("type"),
+        )
 
     async def send_to_instructors(self, session_id: str, message: dict):
-        for info in self.connections.get(session_id, {}).values():
+        recipients = list(self.connections.get(session_id, {}).items())
+        for user_id, info in recipients:
             if info["role"] == "instructor":
-                await info["ws"].send_json(message)
+                try:
+                    await info["ws"].send_json(message)
+                except Exception as e:
+                    logger.warning(
+                        "[WS] send_to_instructors 전송 실패 | session_id=%s user_id=%s error=%s",
+                        session_id, user_id, e,
+                    )
 
 
 manager = ConnectionManager()

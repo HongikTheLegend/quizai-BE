@@ -11,6 +11,17 @@ from app.websocket.manager import manager
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["websocket"])
 
+_OPTION_LABELS = ["A", "B", "C", "D"]
+
+
+def _normalize_option(raw) -> str:
+    """selected_option 정규화: int(0~3) → 'A'~'D', str은 대문자 변환."""
+    if isinstance(raw, int):
+        if 0 <= raw <= 3:
+            return _OPTION_LABELS[raw]
+        return ""
+    return str(raw).upper()
+
 
 async def _fetch_question_by_index(
     supabase, quiz_set_id: str, index: int, time_limit: int
@@ -124,7 +135,7 @@ async def session_ws(
 
             elif role == "student" and msg_type == "submit_answer":
                 quiz_id = data.get("quiz_id", "")
-                selected_option = data.get("selected_option", "")
+                selected_option = _normalize_option(data.get("selected_option", ""))
                 response_time_ms = data.get("response_time_ms", 0)
 
                 try:

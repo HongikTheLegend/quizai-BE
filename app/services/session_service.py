@@ -8,6 +8,8 @@ from app.db.supabase import get_supabase
 
 logger = logging.getLogger(__name__)
 
+_OPTION_LABELS = ["A", "B", "C", "D"]
+
 
 def _generate_session_code() -> str:
     return "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
@@ -87,7 +89,12 @@ def submit_answer(
     if existing.data:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 답변을 제출했습니다")
 
-    is_correct = selected_option.upper() == question["answer"].upper()
+    # int 인덱스(0~3)로 오는 경우 방어 처리
+    if isinstance(selected_option, int):
+        selected_option = _OPTION_LABELS[selected_option] if 0 <= selected_option <= 3 else ""
+    selected_option = str(selected_option).upper()
+
+    is_correct = selected_option == question["answer"].upper()
 
     insert_result = supabase.table("answers").insert({
         "session_id": session_id,

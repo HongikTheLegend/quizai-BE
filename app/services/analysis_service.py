@@ -43,6 +43,10 @@ def _fetch_session_data(session_id: str) -> tuple[list[dict], list[dict]]:
         .execute()
     )
     answers = answers_row.data or []
+    logger.info(
+        "[classify] answers 조회 | session_id=%s | 총 답변 수=%d",
+        session_id, len(answers),
+    )
 
     quiz_row = (
         supabase.table("quizzes")

@@ -1,9 +1,12 @@
+import logging
 import random
 import string
 
 from fastapi import HTTPException, status
 
 from app.db.supabase import get_supabase
+
+logger = logging.getLogger(__name__)
 
 
 def _generate_session_code() -> str:
@@ -86,7 +89,7 @@ def submit_answer(
 
     is_correct = selected_option.upper() == question["answer"].upper()
 
-    supabase.table("answers").insert({
+    insert_result = supabase.table("answers").insert({
         "session_id": session_id,
         "quiz_id": quiz_id,
         "user_id": user_id,
@@ -94,6 +97,21 @@ def submit_answer(
         "is_correct": is_correct,
         "response_time_ms": response_time_ms,
     }).execute()
+
+    if not insert_result.data:
+        logger.error(
+            "[answer] insert 실패 | session_id=%s user_id=%s quiz_id=%s",
+            session_id, user_id, quiz_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="답변 저장에 실패했습니다",
+        )
+
+    logger.info(
+        "[answer] saved | session_id=%s user_id=%s quiz_id=%s is_correct=%s",
+        session_id, user_id, quiz_id, is_correct,
+    )
 
     return {
         "is_correct": is_correct,

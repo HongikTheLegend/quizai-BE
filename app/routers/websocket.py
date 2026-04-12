@@ -12,8 +12,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["websocket"])
 
 
-async def _fetch_question(supabase, quiz_set_id: str, quiz_id: str, time_limit: int) -> dict | None:
-    """quiz_set_id의 questions 배열에서 quiz_id와 일치하는 문제를 조회해 브로드캐스트용 payload로 반환."""
+async def _fetch_question_by_index(
+    supabase, quiz_set_id: str, index: int, time_limit: int
+) -> dict | None:
+    """quiz_set_id의 questions 배열에서 index번째 문제를 조회해 브로드캐스트용 payload로 반환.
+    index가 범위를 벗어나면 None 반환 (세션 종료 신호로 활용 가능).
+    """
     row = (
         supabase.table("quizzes")
         .select("questions")
@@ -24,17 +28,17 @@ async def _fetch_question(supabase, quiz_set_id: str, quiz_id: str, time_limit: 
     if not row.data:
         return None
 
-    question = next(
-        (q for q in (row.data.get("questions") or []) if q["id"] == quiz_id),
-        None,
-    )
-    if not question:
-        return None
+    questions = row.data.get("questions") or []
+    if index >= len(questions):
+        return None  # 모든 문제 소진
 
+    question = questions[index]
     options = [f"{opt['label']}. {opt['text']}" for opt in question.get("options", [])]
 
     return {
-        "quiz_id": quiz_id,
+        "quiz_id": question["id"],
+        "question_index": index,
+        "question_total": len(questions),
         "question": question["question"],
         "options": options,
         "time_limit": time_limit,
@@ -95,13 +99,16 @@ async def session_ws(
             msg_type = data.get("type")
 
             if role == "instructor":
-                if msg_type == "quiz_start":
-                    quiz_id = data.get("quiz_id", "")
-                    question_payload = await _fetch_question(
-                        supabase, session_data["quiz_set_id"], quiz_id, session_data["time_limit"]
+                if msg_type == "next_question":
+                    next_index = manager.advance_question(session_id)
+                    question_payload = await _fetch_question_by_index(
+                        supabase, session_data["quiz_set_id"], next_index, session_data["time_limit"]
                     )
                     if question_payload is None:
-                        await websocket.send_json({"type": "error", "detail": f"Question not found: {quiz_id}"})
+                        await websocket.send_json({
+                            "type": "error",
+                            "detail": f"더 이상 문제가 없습니다. (index={next_index})",
+                        })
                     else:
                         await manager.broadcast(session_id, {
                             "type": "quiz_started",
